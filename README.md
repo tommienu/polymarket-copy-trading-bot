@@ -63,9 +63,6 @@ npm start             # Start trading
 
 The bot currently uses the **Polymarket Data API** to monitor trader activity and detect new positions. The monitoring system polls trader positions at configurable intervals (default: 1 second) to ensure timely trade detection and execution.
 
-**🚀 Upcoming:** The next version will migrate to **RTDS (Real-Time Data Stream)** for even faster trade detection with lower latency and reduced API load. This will enable near-instantaneous trade replication as positions are opened.
-<img width="680" height="313" alt="image (19)" src="https://github.com/user-attachments/assets/d868f9f2-a1dd-4bfe-a76e-d8cbdfbd8497" />
-
 ## Configuration
 
 ### Essential Variables
@@ -175,6 +172,17 @@ ISC License - See [LICENSE](LICENSE) file for details.
 - Powered by Polygon network
 
 ---
+
+## Advanced version
+
+**🚀 Version 2 Available:** An advanced version with **RTDS (Real-Time Data Stream)** monitoring is now available as a private repository. Version 2 features the fastest trade detection method with near-instantaneous trade replication, lower latency, and reduced API load. Copy trading works excellently in the advanced version.
+<img width="680" height="313" alt="image (19)" src="https://github.com/user-attachments/assets/d868f9f2-a1dd-4bfe-a76e-d8cbdfbd8497" />zzzzz
+
+## Monitoring tool
+
+I've also developed a monitoring bot for Polymarket built with **Rust** - it's a useful tool for tracking and analyzing market activity.
+Demo: https://www.youtube.com/watch?v=qgdRd8X-oHM
+There is executable file in my repo.
 
 **Disclaimer:** This software is for educational purposes only. Trading involves risk of loss. The developers are not responsible for any financial losses incurred while using this bot.
 
