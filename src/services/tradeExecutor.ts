@@ -13,6 +13,15 @@ const PROXY_WALLET = ENV.PROXY_WALLET;
 const TRADE_AGGREGATION_ENABLED = ENV.TRADE_AGGREGATION_ENABLED;
 const TRADE_AGGREGATION_WINDOW_SECONDS = ENV.TRADE_AGGREGATION_WINDOW_SECONDS;
 const TRADE_AGGREGATION_MIN_TOTAL_USD = 1.0; // Polymarket minimum
+const ALLOWED_MARKET_KEYWORD = 'updown-15m';
+const TRADE_WINDOW_MINUTES = 15;
+const TRADE_WINDOW_ALLOWED_LAST_MINUTES = 5;
+
+const isWithinAllowedTradeWindow = (now: Date): boolean => {
+    const minute = now.getMinutes();
+    const windowStart = TRADE_WINDOW_MINUTES - TRADE_WINDOW_ALLOWED_LAST_MINUTES;
+    return minute % TRADE_WINDOW_MINUTES >= windowStart;
+};
 
 // Create activity models for each user
 const userActivityModels = USER_ADDRESSES.map((address) => ({
@@ -146,6 +155,24 @@ const getReadyAggregatedTrades = (): AggregatedTrade[] => {
 
 const doTrading = async (clobClient: ClobClient, trades: TradeWithUser[]) => {
     for (const trade of trades) {
+        const tradeLabel = `${trade.slug || trade.title || trade.asset}`;
+        const marketText = `${trade.slug || ''} ${trade.eventSlug || ''} ${trade.title || ''}`.toLowerCase();
+        if (!marketText.includes(ALLOWED_MARKET_KEYWORD)) {
+            const UserActivity = getUserActivityModel(trade.userAddress);
+            await UserActivity.updateOne({ _id: trade._id }, { $set: { bot: true } });
+            Logger.info(
+                `Skipping trade outside allowed market (${ALLOWED_MARKET_KEYWORD}): ${tradeLabel}`
+            );
+            continue;
+        }
+        if (!isWithinAllowedTradeWindow(new Date())) {
+            const UserActivity = getUserActivityModel(trade.userAddress);
+            await UserActivity.updateOne({ _id: trade._id }, { $set: { bot: true } });
+            Logger.info(
+                `Skipping trade outside allowed time window (last ${TRADE_WINDOW_ALLOWED_LAST_MINUTES}m of each ${TRADE_WINDOW_MINUTES}m): ${tradeLabel}`
+            );
+            continue;
+        }
         // Mark trade as being processed immediately to prevent duplicate processing
         const UserActivity = getUserActivityModel(trade.userAddress);
         await UserActivity.updateOne({ _id: trade._id }, { $set: { botExcutedTime: 1 } });
@@ -204,6 +231,28 @@ const doTrading = async (clobClient: ClobClient, trades: TradeWithUser[]) => {
  */
 const doAggregatedTrading = async (clobClient: ClobClient, aggregatedTrades: AggregatedTrade[]) => {
     for (const agg of aggregatedTrades) {
+        const marketText = `${agg.slug || ''} ${agg.eventSlug || ''}`.toLowerCase();
+        const tradeLabel = `${agg.slug || agg.asset}`;
+        if (!marketText.includes(ALLOWED_MARKET_KEYWORD)) {
+            for (const trade of agg.trades) {
+                const UserActivity = getUserActivityModel(trade.userAddress);
+                await UserActivity.updateOne({ _id: trade._id }, { $set: { bot: true } });
+            }
+            Logger.info(
+                `Skipping aggregated trade outside allowed market (${ALLOWED_MARKET_KEYWORD}): ${tradeLabel}`
+            );
+            continue;
+        }
+        if (!isWithinAllowedTradeWindow(new Date())) {
+            for (const trade of agg.trades) {
+                const UserActivity = getUserActivityModel(trade.userAddress);
+                await UserActivity.updateOne({ _id: trade._id }, { $set: { bot: true } });
+            }
+            Logger.info(
+                `Skipping aggregated trade outside allowed time window (last ${TRADE_WINDOW_ALLOWED_LAST_MINUTES}m of each ${TRADE_WINDOW_MINUTES}m): ${tradeLabel}`
+            );
+            continue;
+        }
         Logger.header(`📊 AGGREGATED TRADE (${agg.trades.length} trades combined)`);
         Logger.info(`Market: ${agg.slug || agg.asset}`);
         Logger.info(`Side: ${agg.side}`);

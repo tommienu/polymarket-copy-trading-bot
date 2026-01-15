@@ -12,7 +12,7 @@ const POLYGON_CHAIN_ID = 137;
 const RETRY_LIMIT = ENV.RETRY_LIMIT;
 
 const SELL_PERCENTAGE = 0.8; // 80%
-const MIN_POSITION_VALUE = 17; // Only sell positions > $17
+const MIN_POSITION_VALUE = 10; // Only sell positions > $10
 
 interface Position {
     asset: string;
