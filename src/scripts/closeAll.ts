@@ -13,6 +13,7 @@ const run = (cmd: string) => {
 try {
     run('npm run close-stale');
     run('npm run close-resolved');
+    run('npm run redeem-resolved');
 } catch (error) {
     process.exit(1);
 }
