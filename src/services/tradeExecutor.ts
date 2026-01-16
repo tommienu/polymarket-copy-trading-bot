@@ -13,14 +13,64 @@ const PROXY_WALLET = ENV.PROXY_WALLET;
 const TRADE_AGGREGATION_ENABLED = ENV.TRADE_AGGREGATION_ENABLED;
 const TRADE_AGGREGATION_WINDOW_SECONDS = ENV.TRADE_AGGREGATION_WINDOW_SECONDS;
 const TRADE_AGGREGATION_MIN_TOTAL_USD = 1.0; // Polymarket minimum
-const ALLOWED_MARKET_KEYWORD = 'updown-15m';
+const ALLOWED_MARKET_KEYWORD = 'btc-updown-15m';
 const TRADE_WINDOW_MINUTES = 15;
-const TRADE_WINDOW_ALLOWED_LAST_MINUTES = 5;
+
+const parseTradeWindowStartMinute = (): number | null => {
+    const argv = process.argv;
+    const flagIndex = argv.findIndex((arg) => arg === '--window-start');
+    let rawValue: string | undefined;
+
+    if (flagIndex !== -1 && argv[flagIndex + 1]) {
+        rawValue = argv[flagIndex + 1];
+    } else {
+        const flag = argv.find((arg) => arg.startsWith('--window-start='));
+        if (flag) {
+            rawValue = flag.split('=')[1];
+        }
+    }
+
+    if (!rawValue && process.env.TRADE_WINDOW_START_MINUTE) {
+        rawValue = process.env.TRADE_WINDOW_START_MINUTE;
+    }
+
+    if (!rawValue) {
+        return null;
+    }
+
+    const parsed = Number.parseInt(rawValue, 10);
+    if (Number.isNaN(parsed) || parsed < 0 || parsed >= 60 || parsed % TRADE_WINDOW_MINUTES !== 0) {
+        Logger.warning(
+            `Invalid window start minute "${rawValue}". Use 0, 15, 30, or 45. Defaulting to no window restriction.`
+        );
+        return null;
+    }
+
+    return parsed;
+};
+
+const TRADE_WINDOW_START_MINUTE = parseTradeWindowStartMinute();
+
+const getWindowLabel = (startMinute: number): string => {
+    const endMinute = (startMinute + TRADE_WINDOW_MINUTES) % 60;
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    return `${pad(startMinute)}-${pad(endMinute)}`;
+};
 
 const isWithinAllowedTradeWindow = (now: Date): boolean => {
+    if (TRADE_WINDOW_START_MINUTE === null) {
+        return true;
+    }
+
     const minute = now.getMinutes();
-    const windowStart = TRADE_WINDOW_MINUTES - TRADE_WINDOW_ALLOWED_LAST_MINUTES;
-    return minute % TRADE_WINDOW_MINUTES >= windowStart;
+    const windowStart = TRADE_WINDOW_START_MINUTE;
+    const windowEnd = (windowStart + TRADE_WINDOW_MINUTES) % 60;
+
+    if (windowEnd > windowStart) {
+        return minute >= windowStart && minute < windowEnd;
+    }
+
+    return minute >= windowStart || minute < windowEnd;
 };
 
 // Create activity models for each user
@@ -169,7 +219,7 @@ const doTrading = async (clobClient: ClobClient, trades: TradeWithUser[]) => {
             const UserActivity = getUserActivityModel(trade.userAddress);
             await UserActivity.updateOne({ _id: trade._id }, { $set: { bot: true } });
             Logger.info(
-                `Skipping trade outside allowed time window (last ${TRADE_WINDOW_ALLOWED_LAST_MINUTES}m of each ${TRADE_WINDOW_MINUTES}m): ${tradeLabel}`
+                `Skipping trade outside allowed time window (${TRADE_WINDOW_START_MINUTE === null ? 'all' : getWindowLabel(TRADE_WINDOW_START_MINUTE)}): ${tradeLabel}`
             );
             continue;
         }
@@ -249,7 +299,7 @@ const doAggregatedTrading = async (clobClient: ClobClient, aggregatedTrades: Agg
                 await UserActivity.updateOne({ _id: trade._id }, { $set: { bot: true } });
             }
             Logger.info(
-                `Skipping aggregated trade outside allowed time window (last ${TRADE_WINDOW_ALLOWED_LAST_MINUTES}m of each ${TRADE_WINDOW_MINUTES}m): ${tradeLabel}`
+                `Skipping aggregated trade outside allowed time window (${TRADE_WINDOW_START_MINUTE === null ? 'all' : getWindowLabel(TRADE_WINDOW_START_MINUTE)}): ${tradeLabel}`
             );
             continue;
         }
@@ -325,6 +375,15 @@ export const stopTradeExecutor = () => {
 
 const tradeExecutor = async (clobClient: ClobClient) => {
     Logger.success(`Trade executor ready for ${USER_ADDRESSES.length} trader(s)`);
+    if (TRADE_WINDOW_START_MINUTE === null) {
+        Logger.warning(
+            'No trade window specified; trading allowed at all times. Use --window-start=15 or set TRADE_WINDOW_START_MINUTE.'
+        );
+    } else {
+        Logger.info(
+            `Trade window active (local time): ${getWindowLabel(TRADE_WINDOW_START_MINUTE)}`
+        );
+    }
     if (TRADE_AGGREGATION_ENABLED) {
         Logger.info(
             `Trade aggregation enabled: ${TRADE_AGGREGATION_WINDOW_SECONDS}s window, $${TRADE_AGGREGATION_MIN_TOTAL_USD} minimum`
